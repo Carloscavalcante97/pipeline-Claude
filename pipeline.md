@@ -45,7 +45,7 @@ on exceed."
 ## Archiving (used by Setup and Finish)
 Move the handoff files (`spec.md`, `changes.md`, `test-results.md`,
 `e2e-test-results.md`, `review.md`, `commits.md`, `pr-body.md`,
-`baseline.txt` — whichever exist) into
+`baseline.txt`, `maestro/`, `review/` — whichever exist) into
 `.pipeline/history/<YYYY-MM-DD-HHMM>-<slug>/`,
 where `<slug>` is a short kebab-case name from the spec's `# Spec:` title
 (`unknown` if no spec). Then append one line to `.pipeline/history/LOG.md`
@@ -99,12 +99,24 @@ the input.
 ## Stage 3.5 — E2E Tester
 Invoke the **e2e-tester** subagent. It picks its own mode from the spec and the
 diff — Playwright against the UI for frontend changes, HTTP e2e tests against
-the running API for backend changes, both when both surfaces changed. Wait,
+the running API for backend changes, both when both surfaces changed, Maestro
+on the iPhone for React Native apps. Wait,
 then read `.pipeline/e2e-test-results.md`.
+
+**React Native app** (`react-native` in `package.json`) — before invoking, ask:
+"Conecte e desbloqueie o iPhone no cabo (Modo Desenvolvedor ligado). Pronto?
+(s = iPhone / n = simulador)" and pass `Target: iPhone` or `Target: simulator`
+to the e2e-tester. Ask once per run; fix iterations reuse the answer.
+
+In mobile mode the prints of every tested screen and of every failure are in
+`.pipeline/review/` — always point the user there.
 
 **Gate:** if its `## Status` is `FAILURES`, enter the **Fix loop** below with
 this failure as the input (same as Stage 3). Status `n/a — no runtime surface
-to drive` just proceeds to Stage 4.
+to drive` just proceeds to Stage 4. Status `blocked: …` is the environment
+(device, signing, toolchain), not the code — never send it to the fix loop:
+show the reason and ask the user to fix it and rerun this stage, or to go on
+to the Reviewer without E2E.
 
 ## Stage 4 — Reviewer
 Invoke the **reviewer** subagent. It is read-only and returns the review content

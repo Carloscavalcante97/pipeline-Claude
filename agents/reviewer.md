@@ -21,7 +21,13 @@ the behavior is correct.
 - `.pipeline/test-results.md` — what the Tester found.
 - `.pipeline/e2e-test-results.md` — what the E2E Tester found on the running
   system (Status, Coverage, style checks). A FAILURES status or a "NOT COVERED"
-  row without a justification you accept is a finding.
+  row without a justification you accept is a finding. A `blocked` status
+  means E2E didn't run (device, signing, toolchain) — say in the Rationale
+  what went unverified.
+- `.pipeline/review/` — mobile E2E prints, when present. Look at them (Read
+  shows images): a screen that is visibly broken — cut-off or overlapping
+  text, an error state where the spec expects success — is a finding even if
+  its flow passed.
 - The **real diff**: run `git diff` (and `git status`) to see the actual changes,
   not just what the summaries claim. Note: newly created files are untracked and
   do **not** appear in `git diff` — find them via `git status` and Read them in
