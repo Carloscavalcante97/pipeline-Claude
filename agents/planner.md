@@ -83,11 +83,11 @@ with body {error: 'rate_limited'}." Vague criteria are spec bugs.>
 e.g. "follow the soft-delete + findFirst pattern in src/modules/users">
 
 ## Prototype / design reference
-<Frontend features only. If the request references a prototype (Figma URL,
+<Frontend and mobile features only. If the request references a prototype (Figma URL,
 design screenshot path, or a live reference page), name it here so the
-E2E tester's frontend mode can validate style against it — e.g. "match
+E2E tester's frontend or mobile mode can validate style against it — e.g. "match
 docs/design/login.png: primary button #2563EB, 8px radius, 16px gap".
-If there is no prototype, write exactly: None. Non-frontend features: N/A.>
+If there is no prototype, write exactly: None. Backend-only features: N/A.>
 
 ## Out of scope
 - <things explicitly NOT to do in this change>
