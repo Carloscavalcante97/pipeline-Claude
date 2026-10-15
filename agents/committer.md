@@ -64,9 +64,13 @@ git status --porcelain -uall
 Commit only what the pipeline produced: every path in that output **except**
 - paths listed in `.pipeline/baseline.txt` (pre-existing changes);
 - anything under `.pipeline/` (handoffs, not product code);
+- `ios/` / `android/` changes that `.pipeline/changes.md` doesn't list —
+  side effects of the E2E build (`Podfile.lock`, `project.pbxproj`, `Pods/`,
+  `build/`);
 - secrets and noise: `.env*` (except `.env.example`), `*.pem`, `*.key`,
   credential/service-account JSON, `.DS_Store`, `node_modules/`, build output
-  (`dist/`, `.next/`, `build/`, `coverage/`), Playwright reports/screenshots.
+  (`dist/`, `.next/`, `build/`, `coverage/`), Playwright/Maestro reports and
+  screenshots (`.maestro/*.png`).
 
 Everything excluded goes in **Left uncommitted** with the reason — the human
 decides about those. A secret that shows up is also worth a `.gitignore` note.
@@ -79,9 +83,9 @@ before what uses it), so each commit can be read on its own:
 2. schema/migration — `prisma/schema.prisma`, `prisma/migrations/**`
 3. backend — module, DTOs, service, controller, guards
 4. frontend data — API client, TanStack Query hooks, types
-5. frontend UI — components, then the page/route
+5. frontend UI — components, then the page/route/screen
 6. unit tests → `test(<scope>)`
-7. e2e tests → `test(e2e)`
+7. e2e tests (`e2e/`, `.maestro/`) → `test(e2e)`
 8. docs → `docs(<scope>)`
 
 Skip empty groups. A group over ~300 changed lines splits by module/component
@@ -137,9 +141,11 @@ a push updates it.
 Otherwise, judge the **whole branch** (`git log <base>..HEAD`,
 `git diff --shortstat <base>...HEAD`), not only this run. Recommend
 **OPEN NOW** when any of these holds — and name which one:
-1. **Tela fechada** — the branch adds or changes a routable screen
-   (`app/**/page.tsx`, `pages/**`) and `.pipeline/e2e-test-results.md` is
-   `all passing` in frontend mode: the screen is navigable and tested end to end.
+1. **Tela fechada** — the branch adds or changes a routable screen (web:
+   `app/**/page.tsx`, `pages/**`; React Native: an Expo Router route under
+   `app/` or `src/app/`, not `_layout.tsx`) and `.pipeline/e2e-test-results.md`
+   is `all passing` in frontend or mobile mode: the screen is navigable and
+   tested end to end.
 2. **Feature fechada** — SHIP, no `NOT COVERED` row left in the Coverage
    tables, and neither the spec's Out of scope nor changes.md's Notes name a
    follow-up this same feature needs to be usable (e.g. "the screen comes in
