@@ -7,12 +7,12 @@ Um comando (`/pipeline <feature>`) transforma uma descrição de feature em cód
 ```
 /pipeline "adicionar rate limiting em POST /login, 5 tentativas/min por IP, retornar 429"
 
-  ┌──────────┐   ┌───────┐   ┌──────────┐   ┌────────┐   ┌──────────┐
-  │ Planner  │ → │ Coder │ → │ Ponytail │ → │ Tester │ → │ Reviewer │
-  └──────────┘   └───────┘   └──────────┘   └────────┘   └──────────┘
-    spec.md      changes.md   simplifica    test-results   review.md
-       │             │                          │             │
-     [gate]        [gate]                     [gate]     SHIP / BLOCK
+  ┌──────────┐   ┌───────┐   ┌──────────┐   ┌────────┐   ┌──────────┐   ┌───────────┐
+  │ Planner  │ → │ Coder │ → │ Ponytail │ → │ Tester │ → │ Reviewer │ → │ Committer │
+  └──────────┘   └───────┘   └──────────┘   └────────┘   └──────────┘   └───────────┘
+    spec.md      changes.md   simplifica    test-results   review.md     commits.md
+       │             │                          │             │              │
+     [gate]        [gate]                     [gate]     SHIP / BLOCK   [gate s/n]
 ```
 
 ## Por que isso existe
@@ -34,6 +34,7 @@ O pipeline ataca as duas pontas:
 | 2.5 | **Ponytail** | Revisa o diff por over-engineering e simplifica in-place | Sempre prossegue (anota o que cortou) |
 | 3 | **Tester** | Escreve e roda testes; **nunca** conserta o código | Falhou? Pipeline morre aqui, branch fica para o humano |
 | 4 | **Reviewer** | Review read-only do spec + diff + testes; veredito final | SHIP / NEEDS WORK / BLOCK |
+| 5 | **Committer** | Só após SHIP e com o seu "s": divide o trabalho em commits pequenos no padrão gitflow + Conventional Commits e recomenda abrir o PR quando a feature ou tela está fechada | Pergunta antes de commitar e antes de abrir o PR |
 
 Os agentes se comunicam **apenas por arquivos** em `.pipeline/` — cada estágio deixa um handoff auditável. Runs anteriores são arquivados em `.pipeline/history/`, então todo o histórico de decisão sobrevive.
 
@@ -41,7 +42,7 @@ Os agentes se comunicam **apenas por arquivos** em `.pipeline/` — cada estági
 
 1. **Gates > vibes.** O pipeline para em ambiguidade, em implementação incompleta e em teste falhando. Falhar cedo e barato é o objetivo, não o problema.
 2. **Separação de poderes.** Ferramentas de escrita são retiradas de quem revisa. Não é confiança — é arquitetura.
-3. **Humano nos pontos de decisão.** O pipeline nunca faz merge, commit ou push. Ele entrega uma branch pronta para inspeção e um veredito — a decisão é sua.
+3. **Humano nos pontos de decisão.** O pipeline nunca faz merge. Commit e push só acontecem depois de um SHIP e de um "s" explícito seu — a decisão é sua.
 4. **Handoffs legíveis.** Ler os `.pipeline/*.md` de cada run ensina a escrever descrições de feature cada vez mais afiadas.
 
 ## Resultado
@@ -50,13 +51,15 @@ Em uso diário no meu trabalho (sistemas NestJS/PostgreSQL, Next.js e .NET em pr
 
 ## Uso
 
-É um slash command do [Claude Code](https://claude.com/claude-code). Copie `pipeline.md` para `.claude/commands/` do seu projeto (junto com os subagentes `planner`, `coder`, `tester` e `reviewer` em `.claude/agents/`) e rode:
+É um slash command do [Claude Code](https://claude.com/claude-code). Copie `pipeline.md` para `.claude/commands/` do seu projeto (junto com os subagentes `planner`, `coder`, `tester`, `e2e-tester`, `reviewer` e `committer` em `.claude/agents/`) e rode:
 
 ```
 /pipeline "<descrição clara e específica da feature>"
 ```
 
 Quanto mais específica a descrição, melhor o spec — e o pipeline recusa descrições vagas de propósito.
+
+Rode sempre numa branch gitflow (`feature/*`, `bugfix/*`, `hotfix/*`, `release/*`). Na conta compartilhada **AtomStudioFerramentas**, o primeiro commit pede o seu nome e os commits saem como `[Nome] feat(escopo): descrição`, para saber quem fez cada um. O nome fica salvo em `git config --global pipeline.commitAuthor`.
 
 ---
 
