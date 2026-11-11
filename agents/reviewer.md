@@ -41,6 +41,10 @@ correct.
   non-zero exit or a missing check the project defines: [blocker] for
   typecheck/build, [major] for lint) and its runner summary (every file in
   Tests added executed, 0 skipped).
+- `.pipeline/break-results.md` — the Breaker's attacks on the feature. Every
+  `BROKE` row must be resolved by the fix loop (fixed, or removed with a human
+  decision recorded in the Fix Plan); an open one is [major]. `held` rows tell
+  you what was already tried — spend your review elsewhere.
 - `.pipeline/e2e-test-results.md` — what the E2E Tester found on the running
   system (Status, Coverage, style checks). A FAILURES status or a "NOT COVERED"
   row without a justification you accept is a finding. A `blocked` status
