@@ -1,6 +1,6 @@
 ---
-description: Run the delivery pipeline (Planner → Coder → Simplifier → Tester → E2E → Reviewer → Committer) on a feature, with gates, scope checks and a Planner-led fix loop.
-argument-hint: <descrição clara e específica da feature>
+description: Run the delivery pipeline (Planner → Coder → Simplifier → Tester → E2E → Reviewer → Committer → PR Creator) on a feature or a Journify task, with gates, scope checks and a Planner-led fix loop.
+argument-hint: <descrição clara da feature ou ID/link da task do Journify>
 ---
 
 You are the **orchestrator** of the delivery pipeline: seven subagents (Planner,
@@ -13,6 +13,17 @@ hand off through files in `.pipeline/`.
 Feature to deliver:
 
 > $ARGUMENTS
+
+**Journify task.** If the input is a Journify task (a 20-character ID such as
+`IukG491JBKEkvjmeT8yg`, or a link containing one, possibly followed by extra
+notes), read it with `mcp__journify__obter_task` before anything else. The
+feature description becomes the task's title, its description converted to
+plain text (bullets and numbered criteria preserved) and its comments, then
+the user's extra notes. The first line of `.pipeline/request.md` (Setup step 3)
+is `Journify: <taskId> · <title> · https://journify-track.vercel.app/projects/<projectId>`
+so the PR Creator and the review agents can trace it. More than one task:
+one `Journify:` line each. A task the tool can't read stops the run with the
+error.
 
 If the feature description above is empty or vague (e.g. just "add rate
 limiting"), stop and ask the user to restate it specifically before running
@@ -31,7 +42,7 @@ on exceed."
    executes and the Committer rejects it at Finish.
 2. Archive leftovers from an **aborted** previous run: if any of
    `.pipeline/spec.md`, `.pipeline/changes.md`, `.pipeline/test-results.md`,
-   `.pipeline/e2e-test-results.md`, `.pipeline/review.md`,
+   `.pipeline/break-results.md`, `.pipeline/e2e-test-results.md`, `.pipeline/review.md`,
    `.pipeline/commits.md`, `.pipeline/request.md`, `.pipeline/baseline.txt`
    exist, archive them with the procedure in **Archiving** below, using
    verdict `aborted`. (A completed run archives itself at Finish, so anything
@@ -61,7 +72,7 @@ on exceed."
 
 ## Archiving (used by Setup and Finish)
 Move the handoff files (`request.md`, `spec.md`, `spec.before-fix.md`,
-`changes.md`, `test-results.md`, `e2e-test-results.md`, `review.md`,
+`changes.md`, `test-results.md`, `break-results.md`, `e2e-test-results.md`, `review.md`,
 `commits.md`, `pr-body.md`, `baseline.txt`, `scope-before.txt`,
 `scope-after.txt`, `maestro/`, `review/` — whichever exist) into
 `.pipeline/history/<YYYY-MM-DD-HHMM>-<slug>/`,
@@ -144,6 +155,19 @@ Wait, then read `.pipeline/test-results.md`.
 service, toolchain), not the code: show the reason and ask the user to fix it
 and rerun this stage, or to stop the run here (Finish with no commit gate).
 
+## Stage 3b — Breaker
+Invoke the **tester** subagent again, in a fresh context, with "You are in
+breaker mode" (domain skill hint), inside a **Scope check**. Wait, then read
+`.pipeline/break-results.md`.
+
+**Gate:** `nothing broke` → Stage 3.5. `BROKE` → **Fix loop**, with
+`.pipeline/break-results.md` as the failure report; the Fix Plan says, for each
+`spec gap`, whether it becomes a requirement or the breaker test is removed,
+and the human gate decides. The Breaker runs **once per pipeline run**, never
+inside a fix iteration — new attacks every iteration would never converge. Its
+kept tests are part of the suite from then on, so the Tester's full run keeps
+checking them. Any other status is a failed stage.
+
 ## Stage 3.5 — E2E Tester
 Invoke the **e2e-tester** subagent inside a **Scope check**. It picks its own
 mode from the spec and the diff — Playwright against the UI for frontend
@@ -174,13 +198,13 @@ has no write tools, by design). If the verdict is not **SHIP**, enter the
 **Fix loop** below with the review as the input.
 
 ## Fix loop — Planner-led, human-gated (at most 2 iterations)
-Any failing stage feeds this loop: **Stage 3 FAILURES**, **Stage 3.5
-FAILURES**, or a **Stage 4 non-SHIP verdict** (NEEDS WORK or BLOCK).
+Any failing stage feeds this loop: **Stage 3 FAILURES**, **Stage 3b BROKE**,
+**Stage 3.5 FAILURES**, or a **Stage 4 non-SHIP verdict** (NEEDS WORK or BLOCK).
 
 1. **Diagnose first.** `cp .pipeline/spec.md .pipeline/spec.before-fix.md`,
    then invoke the **planner** in **fix mode**, naming the failure report to
-   read (`.pipeline/test-results.md`, `.pipeline/e2e-test-results.md`, or
-   `.pipeline/review.md`) and the iteration number N. It appends
+   read (`.pipeline/test-results.md`, `.pipeline/break-results.md`,
+   `.pipeline/e2e-test-results.md`, or `.pipeline/review.md`) and the iteration number N. It appends
    `## Fix Plan (iteration N)` to the spec. Verify the contract above it is
    untouched:
    ```bash
@@ -223,7 +247,7 @@ statuses **exactly** — an unknown status never passes.
 ## Finish
 1. Present the final verdict (SHIP / NEEDS WORK / BLOCK) and a one-line summary
    of each stage's handoff file — including the red check and static checks
-   outcome, and whether E2E ran.
+   outcome, how many breaker attacks held or broke, and whether E2E ran.
 2. **Commit gate — SHIP only.** Ask: "Commitar seguindo o gitflow? (s/n)". On
    NEEDS WORK / BLOCK don't offer it — unapproved code isn't committed by the
    pipeline. On **s**, invoke the **committer** subagent (commit mode), then
@@ -241,8 +265,10 @@ statuses **exactly** — an unknown status never passes.
      ask "Abrir o PR agora? (s/n)".
    - `ALREADY OPEN` → ask "Dar push para atualizar o PR #N? (s/n)".
    - `NOT YET` → just tell the user what's still missing before a PR.
-   On **s**, invoke the committer in **PR mode** and show the PR URL (or the
-   compare-URL fallback it returns).
+   On **s**, invoke the **pr-creator** subagent: it pushes, opens the PR with
+   the task links and the **Plano de testes** the test robot executes, and
+   comments the PR link on the Journify task(s). Show the PR URL. If the
+   pr-creator agent isn't installed, fall back to the committer in **PR mode**.
 4. Archive this run using the **Archiving** procedure above, with the real
    verdict — this is what keeps `.pipeline/history/LOG.md` complete.
 5. **Never merge**, and never commit or push without the explicit **s** at the
