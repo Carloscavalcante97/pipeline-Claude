@@ -117,6 +117,47 @@ If the orchestrator's prompt says you are in a fix cycle, read the
 - Re-run steps 4–6 (the red check for new or changed files only) and rewrite
   the results file in full.
 
+## Breaker mode
+If the orchestrator's prompt says you are in **breaker mode**, the job changes.
+The spec's criteria were already covered by the Tester; now you try to make
+the feature **fail**.
+
+- Read only `.pipeline/request.md`, `.pipeline/spec.md` and the real diff
+  (`git diff HEAD`, `git status --porcelain -uall`). Do **not** read
+  `.pipeline/changes.md` or `.pipeline/test-results.md`: the value of this
+  stage is a reading that isn't anchored on the Coder's or the Tester's account.
+- Choose **at most 3 attacks** you believe will fail, each a concrete input or
+  sequence: a boundary (empty, zero, max, unicode, timezone / day edge),
+  another user, role or tenant, a repeated or concurrent call, a dependency
+  failing (DB, network, SDK error), or a behavior the request implies but the
+  spec doesn't write down. Prefer what would hurt in production over what is
+  easy to write.
+- Write each as a test in the project's framework and location, in a file
+  whose name says `breaker` (`x.breaker.test.ts`, `tests/test_x_breaker.py`).
+  Step 2 (target check) and the test rules of step 3 apply.
+- Run them. An attack that **passes** broke nothing: delete it and list it as
+  `held`. An attack that **fails** is the deliverable: keep it and classify it
+  as `bug` (request or spec says otherwise) or `spec gap` (neither says — the
+  human decides).
+- No red check here: these tests are meant to fail on the working tree.
+- Write `.pipeline/break-results.md`:
+
+```markdown
+# Break Results
+
+## Status
+<nothing broke | BROKE>
+
+## Attacks
+| # | Attack | Test | Result | Kind |
+|---|---|---|---|---|
+| 1 | <input or sequence> | `path::name` | held / BROKE | — / bug / spec gap |
+
+## Failures
+<For each BROKE: what was done, what was expected (request or spec line, or
+"not specified"), what happened, and the error output.>
+```
+
 ## Output — write `.pipeline/test-results.md` with this structure
 
 ```markdown
