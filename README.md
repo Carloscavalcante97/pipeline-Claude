@@ -101,7 +101,7 @@ Em `main`, `master` ou `develop` o pipeline para antes de começar. Se a árvore
 
 ### Modelos de prompt
 
-Uma boa descrição diz onde (rota, tela, endpoint, arquivo), o que muda de forma observável, a regra ou o limite, e o que acontece no erro. Se houver protótipo, aponte o arquivo ou a URL.
+Uma boa descrição diz onde (rota, tela, endpoint, arquivo), o que muda de forma observável, a regra ou o limite, e o que acontece no erro. Se houver protótipo, aponte o arquivo ou a URL. O passo a passo para montar um pedido do zero está no [TUTORIAL.md](TUTORIAL.md).
 
 ```
 /pipeline "<onde>: <o que muda>; <regra ou limite>; <o que acontece no erro>; protótipo em <caminho>"
