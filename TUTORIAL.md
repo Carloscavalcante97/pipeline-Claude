@@ -36,22 +36,23 @@ O pedido é a única coisa do run que vem de você. Todo o resto sai dele.
 
 ```mermaid
 flowchart LR
-    P["📝 Seu pedido"] --> PL["🧠 Planner"]
-    PL --> S["📄 spec.md"]
-    S --> C["💻 Coder"]
-    S --> T["🧪 Tester"]
-    C --> R["🔍 Reviewer"]
-    T --> R
-    P -. "compara com o pedido literal" .-> R
+    P["📝 Seu pedido"] --> TR{"🚦 Triagem"}
+    TR -- "completo" --> S["📄 spec.md"]
+    TR -- "vago ou arriscado" --> PL["🧠 Planner"]
+    PL --> S
+    S --> B["💻 Builder"]
+    B --> V["🔍 Verifier"]
+    S -. "ataca a partir do spec" .-> V
 ```
 
-- O **Planner** transforma o pedido em spec, com critérios de aceite numerados.
-- O **Coder** implementa o spec, e só o spec.
-- O **Tester** escreve um teste para cada critério, copiando os valores esperados do spec.
-- O **Reviewer** compara o resultado com o **pedido original**, não só com o spec.
+- A **Triagem** confere se o pedido está completo. Se estiver, ele vira o spec direto. Se não, o **Planner** transforma o pedido em spec e pergunta o que faltar.
+- O **Builder** escreve um teste para cada critério, copiando os valores esperados do spec, e só depois o código.
+- O **Verifier**, que não escreveu nada, tenta quebrar o resultado a partir do spec: entrada hostil, concorrência, dependência falhando.
 
 > [!IMPORTANT]
 > Um pedido vago tem dois finais possíveis. Ou o Planner para com várias perguntas, ou ele adivinha errado e o pipeline implementa o palpite errado com perfeição. O que não está escrito no pedido não vira teste.
+>
+> Um pedido completo faz o caminho inverso: passa na triagem, pula o Planner e o run começa direto no Builder.
 
 ---
 
@@ -149,7 +150,7 @@ Número, formato, condição. **Sem adjetivo.**
 
 ### Passo 4 · 💥 Erro &nbsp; `🟩🟩🟩🟩⬜⬜`
 
-Status e corpo **exatos**. O Tester copia esse texto para dentro do teste.
+Status e corpo **exatos**. O Builder copia esse texto para dentro do teste.
 
 ```diff
 - dar erro se não existir
@@ -326,7 +327,7 @@ O trecho "continuam funcionando" vira um teste de regressão.
 |---|---|---|
 | "rápido", "bonito", "seguro" | "responde em menos de 300 ms", "botão #2563EB, raio 8px", "só o dono, 404 para outro" | Adjetivo não vira teste |
 | "cria um service", "usa Redis" | O comportamento observável | O Planner escolhe a implementação seguindo o padrão do projeto |
-| "mostra uma mensagem de erro" | `'E-mail ou senha incorretos'` | O Tester copia o texto exato |
+| "mostra uma mensagem de erro" | `'E-mail ou senha incorretos'` | O Builder copia o texto exato |
 | "etc", "e afins" | A lista completa | O que não está escrito não é testado |
 | "faz X e também Y" | Dois runs | Cada feature com o seu spec, o seu review e o seu PR |
 | "corrigir o login" | Sintoma + onde + comportamento certo | Sem sintoma não dá para provar que o bug existia |

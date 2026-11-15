@@ -1,131 +1,112 @@
 # pipeline-Claude
 
-Um comando do Claude Code, `/pipeline "<feature>"`, que transforma uma descrição de feature em código implementado, testado e revisado, passando por sete agentes especializados. Cada agente faz uma coisa só, e nenhum deles avalia o próprio trabalho. Entre os estágios há gates: o pipeline para quando falta uma decisão sua, quando um teste falha ou quando o review não aprova, e nunca faz commit, push ou merge sem você responder "s".
+Um comando do Claude Code, `/pipeline "<feature>"`, que transforma uma descrição de feature em código implementado, testado e verificado. No caminho principal são dois agentes. Um implementa escrevendo os testes antes do código. O outro, com contexto limpo, não escreveu nada e tenta quebrar o resultado. O Planner e o E2E só entram quando o pedido ou a mudança pedem. Entre os estágios há gates, e o pipeline nunca faz commit, push ou merge sem você responder "s".
 
 ```
-/pipeline "adicionar rate limiting em POST /login, 5 tentativas/min por IP, retornar 429"
+/pipeline "rate limiting em POST /auth/login: 5 tentativas/min por IP; na 6ª, 429 com {error: 'rate_limited'}"
 
-  ┌──────────┐   ┌───────┐   ┌────────────┐   ┌────────┐   ┌─────┐   ┌──────────┐   ┌───────────┐
-  │ Planner  │ → │ Coder │ → │ Simplifier │ → │ Tester │ → │ E2E │ → │ Reviewer │ → │ Committer │
-  └──────────┘   └───────┘   └────────────┘   └────────┘   └─────┘   └──────────┘   └───────────┘
-    spec.md      changes.md    simplifica    test-results  e2e-results  review.md    commits.md
-       │             │                            │           │             │             │
-   [perguntas]    [gate]                       [gate]      [gate]     SHIP / BLOCK    [s/n]
+  Triagem ──► [Planner] ──► Builder ──► [E2E] ──► Verifier ──► Committer ──► [PR]
+  o pedido     só se o       testes,     só com    ataca e      commits      com "s"
+  está         pedido        código,     tela      julga        gitflow
+  completo?    não passar    checks                             (Haiku)
+                               ▲                       │
+                               └───── fix (até 2) ◄────┘
 ```
 
-Em uso diário em sistemas NestJS/PostgreSQL, Next.js e .NET em produção, a percepção é de cerca de 75% menos tempo gasto em correção do que com um agente de IA solto. Isso é observação de uso, não medição. A medição controlada está no experimento A/B do flash-sales, com duas features por enquanto. Nele, a correção depois da entrega caiu de 18–27 linhas para zero, porque a pipeline pegou antes da entrega defeitos que o agente direto deixou passar. Em compensação, o tempo total até o aceite foi maior: cerca de 2 vezes na v2 e 9 vezes na v1.
+Medido num A/B controlado no projeto flash-sales. A mesma feature (F02, Idempotency-Key) foi feita duas vezes a partir do mesmo commit, uma pelo pipeline e outra por um agente direto, com o mesmo oráculo oculto e uma revisão cega:
 
-Existe também a `/pipeline-v2`, uma versão enxuta com dois agentes no caminho principal, montada a partir de medições. Ela está descrita em [Pipeline v2](#pipeline-v2-pipeline-v2).
+| | agente direto | pipeline | diferença |
+|---|---:|---:|---:|
+| defeitos alto/médio na entrega | 1 | 0 | −100% |
+| retrabalho depois da entrega | 27 linhas, 1 rodada | 0 | −100% |
+| tokens até o aceite | 201k | 204k | +1% |
+| tempo até o aceite | 9,5 min | 17,9 min | +88% |
+
+É uma feature só, então os percentuais valem com os números absolutos ao lado. O pipeline custa praticamente os mesmos tokens que o agente direto, entrega sem o retrabalho e gasta quase o dobro do tempo. A versão anterior, com oito agentes, gastava seis vezes mais tokens; a história está em [De oito agentes para dois](#de-oito-agentes-para-dois).
 
 ## Por que existe
 
 Um agente de IA sem processo produz código que parece pronto. O custo aparece depois, em correções, retrabalho e PRs que voltam. A causa quase sempre é uma destas duas: a entrada era ambígua, ou ninguém verificou a saída de forma independente.
 
-O pipeline ataca as duas pontas. Antes de qualquer código, o Planner transforma a feature em um spec com critérios de aceite numerados; se sobrar uma decisão que só você pode tomar, o pipeline para e pergunta. Depois do código, quem testa e quem revisa são agentes diferentes de quem escreveu, sem permissão para consertar o que encontram. Um teste que não falha sem a feature é reescrito, e typecheck, lint, build e a suíte completa do projeto rodam a cada run.
+O pipeline ataca as duas pontas com o mínimo de etapas:
+- **Entrada ambígua.** A triagem barra o pedido ambíguo e só nesse caso chama o Planner.
+- **Saída sem verificação.** Um Verifier que não escreveu o código tenta quebrá-lo antes do commit, contra o sistema rodando.
+
+Nas medições, foi essa verificação independente que fez diferença na qualidade. As outras etapas da versão antiga só custavam tokens e tempo.
 
 ## Como funciona
 
-Os agentes se comunicam apenas por arquivos na pasta `.pipeline/` do projeto. Cada estágio lê os arquivos dos anteriores e deixa o seu. No fim do run tudo é arquivado em `.pipeline/history/`, com uma linha no `LOG.md`, então o histórico de decisão de cada feature sobrevive.
+Os agentes se comunicam apenas por arquivos na pasta `.pipeline/` do projeto. No fim do run tudo é arquivado em `.pipeline/history/`, com uma linha no `LOG.md`, então o histórico de cada feature sobrevive.
 
-### 1. Planner
+### Triagem (sem agente)
 
-Lê o pedido e explora o repositório para entender os padrões existentes. Escreve `.pipeline/spec.md`: arquivos a mudar, assinaturas, critérios de aceite numerados e falsificáveis, casos de borda, uma seção de segurança (quem pode chamar, o que é validado, o que sai do sistema) e o que fica fora do escopo. Não escreve código. Quando o pedido deixa uma decisão em aberto, ele a registra como pergunta e o pipeline para. Você responde, ele grava as respostas em `## Decisions` e o run continua.
+O próprio orquestrador responde seis perguntas sobre o pedido:
+1. A interface está explícita (rotas, entradas, saídas, erros)?
+2. As regras são testáveis (números e mensagens exatas, não adjetivos)?
+3. O escopo está delimitado?
+4. Não há decisão em aberto?
+5. A mudança é reversível e local (sem migrar dados existentes nem mudar o contrato de outro serviço)?
+6. São até cerca de 500 linhas?
 
-### 2. Coder
+Se tudo for "sim", o pedido vira o spec e o run vai direto para o Builder. Se o pedido for grande, o pipeline sugere dividir em partes menores.
 
-Implementa o spec, e só o spec. Roda typecheck, lint e build do projeto e registra os resultados em `.pipeline/changes.md`. Um hook impede que ele edite arquivos de teste. Não adiciona dependência que o spec não lista, não coloca segredo em código e não usa supressões (`eslint-disable`, `@ts-ignore`, `as any`) para ficar verde. Se encontrar uma pergunta aberta ou um spec impossível, para e diz por quê.
+### Planner (só quando a triagem falha)
 
-### 2.5 Simplifier
+Lê o pedido, explora o repositório e escreve `.pipeline/spec.md` em no máximo 80 linhas: critérios de aceite numerados e falsificáveis, casos de borda, segurança e o que fica fora do escopo. Não escreve código. Quando o pedido deixa uma decisão em aberto, ele a registra como pergunta e o pipeline para. Você responde, ele grava a resposta em `## Decisions` e o run continua.
 
-Passa a régua do Ponytail no diff do Coder: abstração com uma implementação só, configuração para um valor que nunca muda, código morto, dependência nova para o que poucas linhas resolvem. Só mexe em código de produto. Antes de seguir, roda o typecheck e os testes existentes; se uma simplificação quebrar algo, ele mesmo desfaz.
+### Builder
 
-### 3. Tester
+Implementa a feature com os testes primeiro, num contexto só:
+1. Transforma o spec numa lista de critérios.
+2. Escreve um teste por critério, com os valores esperados copiados do spec.
+3. Roda os testes antes de existir código, e eles têm que falhar. Esse é o red check.
+4. Implementa o mínimo que faz os testes passarem, sem mexer nos testes.
+5. Roda typecheck, lint, a suíte completa e o build.
+6. Roda os testes novos três vezes seguidas para pegar instabilidade.
 
-Escreve um teste para cada critério de aceite, caso de borda e item de segurança do spec, com os valores esperados copiados do spec, nunca da saída do código. Depois prova que os testes testam a feature: copia os arquivos novos para uma cópia do código em `HEAD`, onde a feature ainda não existe, e eles têm que falhar lá. Em seguida roda a suíte completa, typecheck, lint e build; qualquer exit diferente de 0 é falha do run. Nunca conserta o código. Um hook só deixa editar arquivos de teste.
+Ele também valida a entrada do cliente na fronteira, para que entrada nenhuma vire 500. Por fim deixa em `.pipeline/build.md` a tabela de critério por teste, os checks e um mapa curto do que mudou e de como subir o app.
 
-### 3.5 E2E Tester
+### E2E Tester (só quando a mudança tem tela)
 
-Testa o sistema rodando. Playwright para tela web, supertest para API, Maestro para app React Native (no iPhone ou no simulador). Antes de qualquer comando que toque banco ou API, imprime o alvo e exige que seja local ou de teste; produção é `blocked`. Para cada rota protegida, testa sem token (401) e com o token de outro usuário (403 ou 404), sem substituir o guard. No app, cada critério termina com um print em `.pipeline/review/`. Quando a mudança não tem superfície para dirigir (uma classe interna, por exemplo), o status é `n/a`.
+Testa a tela no sistema rodando: Playwright para web, Maestro para app React Native (no iPhone ou no simulador). Antes de qualquer comando, exige que o alvo seja local ou de teste. A API de backend não passa por aqui, porque o Verifier já a ataca rodando.
 
-### 4. Reviewer
+### Verifier
 
-Lê o pedido original, o spec, o diff real, os arquivos de teste inteiros (as tabelas de cobertura sozinhas não bastam) e os prints. É somente leitura: não tem ferramenta de edição e um hook bloqueia qualquer comando de shell que escreva. Emite o veredito: SHIP, NEEDS WORK ou BLOCK. Um teste que passa sem a feature, um critério sem teste ou um typecheck que falhou são achados, mesmo com tudo verde.
+Não escreveu o código e não o conserta. Com contexto limpo, escolhe até três ataques a partir do spec e da interface:
+- **Entrada hostil:** vazio, enorme, tipo errado, caracteres de controle, Unicode malformado.
+- **Concorrência e repetição:** a mesma chamada N vezes ao mesmo tempo, duas instâncias.
+- **Dependência falhando:** banco travado, timeout.
+- **Autorização:** o recurso de outro usuário.
 
-### 5. Committer
+Os ataques rodam contra a API de verdade. Um ataque que passa é apagado; um que falha vira teste `*.breaker.*` e entra no relatório. Depois o Verifier confere se cada critério tem um teste real, roda a suíte completa e lê o diff procurando erros de correção, sem comentar estilo. O veredito é SHIP, NEEDS WORK ou BLOCK, em `.pipeline/verify.md`.
 
-Só roda depois de um SHIP e de você responder "s". Divide o trabalho em commits pequenos por camada, em ordem de dependência, no padrão Conventional Commits. Na conta compartilhada AtomStudioFerramentas, prefixa cada commit com `[Nome]`. Antes de cada commit, procura segredos no conteúdo dos arquivos (chave privada, AKIA, tokens, `password: "..."`) e para se achar. Nunca commita o que já estava alterado antes do run. Depois avalia se é hora de abrir o PR (tela fechada, feature fechada, branch grande, hotfix) e, com outro "s", abre.
+### Committer
+
+Só roda depois de um SHIP e de você responder "s", em Haiku, porque o trabalho é mecânico. Ele:
+- divide o trabalho em commits pequenos por camada, no padrão Conventional Commits;
+- na conta compartilhada AtomStudioFerramentas, prefixa cada commit com `[Nome]`;
+- procura segredos antes de cada commit e nunca commita o que já estava alterado antes do run;
+- avalia se é hora de abrir o PR.
+
+### PR Creator
+
+Com outro "s", dá push e abre o PR com os links das tasks do Journify e um plano de testes por critério, que o robô de testes executa.
 
 ### Ciclo de correção
 
-Quando um teste falha ou o review não dá SHIP, o Planner diagnostica a causa raiz e anexa um Fix Plan ao spec: o que o Coder muda, o que o Tester muda (quase sempre nada; um teste só é considerado errado quando contradiz uma linha do spec) e o que ninguém deve tocar. Nada acima do Fix Plan pode mudar, e o orquestrador confere isso com um diff. Você vê a falha e o plano, e decide se aplica. Com o "s", rodam Coder, Simplifier, Tester, E2E e Reviewer de novo. No máximo duas voltas; depois disso o branch volta para você com o último relatório.
+Quando o Verifier ou o E2E encontram um problema, o relatório volta para o Builder:
+- **Correção automática:** bug claro, com o comportamento certo escrito no spec.
+- **Correção com a sua aprovação:** lacuna no spec, mudança de contrato ou BLOCK. A sua resposta entra em `## Decisions`.
+
+A primeira correção retoma o mesmo Builder, que já tem o spec e o repositório no contexto. A segunda abre um Builder novo, porque depois de duas tentativas um contexto limpo rende mais. Em seguida o mesmo Verifier confere a correção, sem atacar de novo. São no máximo duas voltas; depois disso o branch volta para você com o último relatório.
 
 ### O que cada estágio pode tocar
 
-O orquestrador compara o hash dos arquivos alterados antes e depois de cada estágio. O Simplifier não pode ter mudado teste, os testers só podem ter mudado teste, e o Reviewer não pode ter mudado nada. Os hooks no frontmatter dos agentes bloqueiam a ação na hora; o diff pega o que passar. Uma violação para o run.
+O orquestrador compara o hash dos arquivos alterados antes e depois do Verifier e do E2E. O Verifier só pode ter criado arquivos `*.breaker.*`, e o E2E só arquivos de teste. Os hooks no frontmatter bloqueiam na hora; o diff pega o que passar. Uma violação para o run.
 
-## Pipeline v2: `/pipeline-v2`
+### Custo
 
-A v2 nasceu de um experimento A/B no projeto flash-sales. Cada feature foi feita duas vezes a partir do mesmo commit, uma pela pipeline e outra por um agente direto. As duas versões foram julgadas pelo mesmo oráculo oculto e por uma revisão cega. O resultado: o que fez diferença na qualidade foi a verificação independente, e o resto da v1 era custo. Na primeira feature, a v1 usou 16 chamadas de agente e 951k tokens, contra 155k do agente direto.
-
-```
-/pipeline-v2 "<feature com o contrato>"
-
-  Triagem → [Planner?] → Builder → Verifier → [fix ≤ 2] → Committer
-  (sem agente)            TDD num    ataca e julga,          (Haiku)
-                          contexto   contexto limpo
-```
-
-- **Triagem.** O próprio orquestrador responde 6 perguntas sobre o pedido, sem
-  chamar agente: a interface está explícita, as regras são testáveis, o escopo
-  é delimitado, não há decisão em aberto, a mudança é reversível e local, e o
-  tamanho fica em até ~500 linhas. Se todas forem "sim", o pedido vira o spec e
-  o Planner não roda.
-- **Builder.** Substitui o Coder, o Simplifier e o Tester num contexto só.
-  Escreve os testes a partir do spec antes do código, então o red check sai de
-  graça. Depois faz a implementação mínima, roda typecheck, lint, suíte e build,
-  e roda os testes novos 3 vezes para pegar instabilidade.
-- **Verifier.** Substitui o Breaker, o E2E de backend e o Reviewer. Roda em
-  contexto limpo, faz até 3 ataques contra a API rodando (entrada hostil,
-  concorrência, dependência falhando), revisa o diff contra o spec e dá o
-  veredito. Só pode criar arquivos `*.breaker.*`.
-- **Etapas condicionais.** O Planner roda só se a triagem falhar. O Simplifier,
-  só com mais de 300 linhas de produção. O E2E, só em UI ou mobile. O Reviewer
-  completo, só em runs grandes. Todos são os agentes da v1, reaproveitados.
-- **Ciclo de correção.**
-  - É automático para bug e passa por você em lacuna de spec, mudança de
-    contrato ou BLOCK.
-  - O fix 1 retoma o mesmo Builder, que já tem o spec e o repo no contexto. O
-    fix 2 abre um Builder novo.
-  - O máximo são duas voltas.
-- **Custo medido.** O `.pipeline/usage.csv` registra tokens e tempo por etapa,
-  e o run para e pergunta quando passa de 450k tokens.
-
-### Medido no flash-sales
-
-| feature | quem fez | defeitos alto/médio na entrega | tokens até o aceite | tempo |
-|---|---|---:|---:|---:|
-| F01, estoque com reserva atômica | agente direto | 1 | 155k | 4 min |
-| F01 | `/pipeline` (v1) | 0 | 951k | 36 min |
-| F02, Idempotency-Key | agente direto | 1 | 201k | 10 min |
-| F02 | `/pipeline-v2` | 0 | 204k | 18 min |
-
-- O oráculo empatou em 100% nas duas features.
-- A diferença veio de entradas hostis que só o verificador independente atacou:
-  um byte NUL que virava 500 e um surrogate Unicode que fazia a repetição
-  idêntica receber 422.
-- A v2 gastou praticamente os mesmos tokens que o agente direto, mas levou cerca
-  de 2 vezes mais tempo.
-- A amostra ainda é pequena (2 features). Os dados e as ressalvas estão em
-  `docs/experiment/` no flash-sales.
-
-### Quando usar cada uma
-
-- **`/pipeline-v2`:** o padrão, principalmente em features com invariante
-  difícil: concorrência, dinheiro, idempotência, mensageria, segurança.
-- **`/pipeline` (v1):** quando você quer o Planner e todos os estágios em todo
-  run, e o gate humano em toda correção.
-- **Sem pipeline:** mudanças triviais, como CRUD simples ou ajuste de texto e
-  layout.
+Cada etapa grava tokens e tempo em `.pipeline/usage.csv`, que é arquivado com o run. Se o total passar de 450k tokens (800k com Planner), o pipeline para e pergunta se continua.
 
 ## Instalação
 
@@ -137,19 +118,21 @@ cd pipeline-Claude
 mkdir -p ~/.claude/hooks/pipeline && cp hooks/*.sh ~/.claude/hooks/pipeline/
 
 # global, vale para todos os projetos da máquina
-# (a v2 reaproveita os agentes da v1, então os dois comandos vão juntos)
-cp pipeline.md pipeline-v2.md ~/.claude/commands/
+cp pipeline.md ~/.claude/commands/
 cp agents/*.md ~/.claude/agents/
 
 # ou só num projeto, versionado junto com o código dele
 mkdir -p ../meu-projeto/.claude/commands ../meu-projeto/.claude/agents
-cp pipeline.md pipeline-v2.md ../meu-projeto/.claude/commands/
+cp pipeline.md ../meu-projeto/.claude/commands/
 cp agents/*.md ../meu-projeto/.claude/agents/
+
+# se você tinha a versão de oito agentes, remova o que saiu
+rm -f ~/.claude/agents/{coder,tester,simplifier,reviewer}.md ~/.claude/commands/pipeline-v2.md
 ```
 
 O Claude Code carrega comandos e agentes na inicialização: depois de copiar, reinicie. Hooks de agentes instalados dentro de um projeto só rodam depois que você aceita o diálogo de confiança do workspace; os globais rodam direto.
 
-Se você usa o plugin Ponytail no modo global, inicie o Claude Code com `PONYTAIL_DEFAULT_MODE=off` para rodar o pipeline. O modo global é injetado em todos os subagentes, inclusive no Tester, que ele manda minimizar testes. O Simplifier carrega a skill sozinho.
+O plugin Ponytail no modo global pode ficar ligado. O Builder e o E2E Tester têm uma regra explícita para não reduzir os testes por critério.
 
 ## Como usar
 
@@ -165,6 +148,8 @@ git switch -c feature/rate-limit-login
 ```
 
 Em `main`, `master` ou `develop` o pipeline para antes de começar. Se a árvore tiver alterações não commitadas, ele mostra a lista e pergunta se continua; essas alterações ficam fora dos commits do run.
+
+Quanto mais completo o pedido, mais curto o run: um pedido que passa na triagem pula o Planner inteiro.
 
 ### Modelos de prompt
 
@@ -192,7 +177,7 @@ Tela do app (React Native), testada no iPhone:
 /pipeline "tela 'Esqueci a senha' no app: campo e-mail, botão Enviar desabilitado até o e-mail ser válido, e a mesma mensagem de sucesso para e-mail cadastrado ou não"
 ```
 
-Regra de domínio sem tela nem rota (o E2E dá `n/a` e a suíte unitária é a verificação):
+Regra de domínio sem tela nem rota (sem E2E; os testes do Builder e os ataques do Verifier são a verificação):
 
 ```
 /pipeline "cupom de desconto no carrinho (src/cart.ts): novo método applyCoupon(code). 'DEZ' dá 10% de desconto no total; 'FRETE' desconta R$ 15,00. Código desconhecido lança InvalidCouponError; segundo cupom lança CouponAlreadyAppliedError. total() devolve o valor com desconto, arredondado a 2 casas"
@@ -226,7 +211,7 @@ Campo novo com migration:
 
 ### Descrição vaga e descrição específica
 
-| O pipeline para e pede detalhe | Vira spec direto |
+| O pipeline chama o Planner ou pede detalhe | Vai direto para o Builder |
 |---|---|
 | "adicionar rate limiting" | "rate limiting em POST /auth/login: 5/min por IP, 429 com {error: 'rate_limited'}" |
 | "melhorar a tela de perfil" | "perfil: trocar o campo idade por data de nascimento (DD/MM/AAAA), salva em ISO no PATCH /users/me" |
@@ -237,56 +222,54 @@ Campo novo com migration:
 | Etapa | Pergunta | Quando |
 |---|---|---|
 | Setup | "A árvore tem alterações não commitadas. Continuar assim? (s/n)" | há trabalho seu não commitado |
+| Triagem | "O pedido parece passar de ~500 linhas. Dividir em pedidos menores? (s/n)" | pedido grande |
 | Planner | as perguntas em aberto do spec | a descrição deixou uma decisão em aberto |
-| Tester / E2E | "Corrija o ambiente e rode de novo?" | banco fora, alvo que não é local, iPhone ausente, assinatura |
+| Builder / E2E | "Corrija o ambiente e rode de novo?" | banco fora, alvo que não é local, iPhone ausente, assinatura |
 | E2E | "Conecte e desbloqueie o iPhone. Pronto? (s = iPhone / n = simulador)" | app React Native, uma vez por run |
-| Ciclo de correção | "Aplicar esta correção? (s/n)", depois de mostrar a falha e o Fix Plan | teste falhou ou o review não deu SHIP |
+| Ciclo de correção | "Aplicar esta correção? (s/n)" | lacuna no spec, mudança de contrato, BLOCK ou segunda volta (bug claro é corrigido sem perguntar) |
+| Orçamento | "Passou do orçamento de tokens. Continuar? (s/n)" | mais de 450k tokens (800k com Planner) |
 | Committer | "Commitar seguindo o gitflow? (s/n)" | só depois de SHIP |
 | Committer | "Qual o seu nome para identificar os commits feitos pela conta AtomStudioFerramentas?" | conta compartilhada, só no primeiro commit da máquina |
 | PR | "Abrir o PR agora? (s/n)" | a feature ou a tela está fechada |
 
 ### Um run completo, resumido
 
-Este é o run real do exemplo do cupom, num projeto TypeScript com Jest:
+Este é o run real da F02 (Idempotency-Key na compra) no flash-sales, com NestJS, Prisma e Vitest:
 
 ```
-Planner: spec com 19 critérios de aceite e 2 perguntas em aberto.
-  1. FRETE num total abaixo de 15,00: (a) trava em 0  (b) rejeita com erro  (c) deixa negativo
-  2. Arredondamento em meio centavo (10,05 × 0,9 = 9,045): (a) comercial, 9,05  (b) ABNT 5891, 9,04
-Você responde: 1a, 2a. O Planner registra em ## Decisions e segue.
-
-Coder: src/cart.ts (+22 linhas). typecheck 0, build 0.
-Simplifier: nada a cortar; cada trecho corresponde a um critério.
-Tester: 36 testes novos. Red check: todos falham em HEAD. Suíte completa 38/38. typecheck e build 0.
-E2E: n/a (classe em memória, sem rota nem tela).
-Reviewer: SHIP, nenhum achado.
+Triagem: 6 de 6 "sim". Planner pulado; o pedido vira o spec.
+Builder: 18 testes. Red check 18/18 antes do código. Checks e testes novos ×3 verdes.
+Verifier: 3 ataques contra a API rodando.
+  1. 2000 requisições simultâneas (1000 chaves × 2), estoque 200: resistiu
+  2. buyerId com surrogate UTF-16 solto: QUEBROU, a repetição idêntica dá 422 (bug)
+  3. venda travada por 7 s: QUEBROU, a requisição com chave dá 500 (lacuna do spec)
+Aplicar esta correção? (s/n) s   (lacuna decidida: esperar como a requisição sem chave)
+Builder (retomado): os dois corrigidos, mais 1 teste.
+Verifier (retomado): SHIP. Suíte e2e 74/74.
 
 Commitar seguindo o gitflow? (s/n) s
-  b599db1 feat(cart): adicionar cupom de desconto no carrinho
-  f551a14 test(cart): cobrir cupons, erros e arredondamento do total
-PR recomendado (feature fechada): feat(cart): cupom de desconto no carrinho → develop
-Abrir o PR agora? (s/n)
+  a38d792 feat(db): adicionar tabela de chaves de idempotência
+  7ee70bb feat(sales): aceitar header Idempotency-Key na compra
+  42cf25e test(sales): cobrir critérios de aceite da Idempotency-Key
+  8699d73 test(sales): cobrir ataques de buyerId unicode e venda travada
+Total: 4 chamadas de agente, 204k tokens, 18 min, 1 pergunta.
 ```
 
-E o mesmo run com uma regressão injetada no `cart.ts` antes do Tester, para mostrar o ciclo de correção:
-
-```
-Tester: FAILURES. 1 de 38: "FRETE never makes the total negative", esperado 0, recebido -0.01.
-Planner (fix): causa raiz em src/cart.ts:31, faltou o Math.max(0, ...) da Decision 1.
-  Mudanças para o Coder: uma linha. Para o Tester: nenhuma, o teste está certo.
-Aplicar esta correção? (s/n) s
-Coder: uma linha, arquivo volta ao hash revisado. Simplifier: nada. Tester: 38/38.
-```
+O agente direto, com o mesmo pedido, entregou o defeito do surrogate e precisou de uma rodada de correção depois da entrega.
 
 ## O que garante que os testes testam
 
-Na hora do Tester nada foi commitado, então `HEAD` é o código sem a feature. Cada teste novo roda ali e tem que falhar. Um teste que passa sem a feature não a testa e é reescrito. Numa branch `bugfix/*`, isso prova que o teste reproduz o bug.
+O Builder escreve os testes antes do código, então eles têm que falhar antes de a feature existir. Um teste que passa sem a feature não a testa e é reescrito. Numa branch `bugfix/*`, isso prova que o teste reproduz o bug.
 
-Os valores esperados são literais do spec: status, corpo, mensagem, contagem. Mock de acesso a dados tem os argumentos assertados. Snapshot, `skip`, `todo`, `only` e asserções vazias (`toBeDefined()` sozinho) são proibidos, e o relatório inclui as linhas do runner por arquivo, para provar que cada arquivo novo rodou.
+Os testes seguem estas regras:
+- **Valores esperados:** são literais do spec (status, corpo, mensagem, contagem).
+- **Isolamento:** cada teste cria os próprios dados e só confere esses dados, nunca contagens globais nem ordem. Na versão antiga, contagens globais criaram uma suíte instável que custou uma volta inteira de correção.
+- **Proibidos:** snapshot, `skip`, `todo`, `only` e asserções vazias.
+- **Instabilidade:** os testes novos rodam três vezes antes da entrega.
 
-O spec tem uma seção de segurança e cada item dela vira critério de aceite, então o unitário e o E2E cobrem autorização e validação. O E2E nunca substitui o guard por `canActivate: () => true`.
+Um teste escrito por quem escreveu o código tende a confirmar o próprio código. Por isso o Verifier existe: ele ataca a partir do spec, não dos testes do Builder, e é aí que aparecem os defeitos que o oráculo não pega.
 
-O Reviewer recebe o pedido original junto com o spec. Se o Planner leu "por IP" como "por e-mail", a implementação perfeita do spec errado é bloqueada.
+O spec tem uma seção de segurança, e cada item dela vira critério de aceite. O E2E nunca substitui o guard por `canActivate: () => true`.
 
 ## Gitflow e conta compartilhada
 
@@ -305,29 +288,47 @@ Uma vez por máquina e aparelho:
 
 Se o iOS bloquear o app do agente de teste na primeira execução: Ajustes → Geral → VPN e Gerenciamento de Dispositivos → confiar no certificado do time.
 
-Cada critério testado termina com um print da tela, e cada falha gera o seu (`FALHOU-<flow>.png`). Tudo vai para `.pipeline/review/`, listado na seção Prints de `.pipeline/e2e-test-results.md`. O Reviewer olha esses prints antes do veredito. No fim do run a pasta é arquivada em `.pipeline/history/<run>/review/` e nunca entra em commit.
+Cada critério testado termina com um print da tela, e cada falha gera o seu (`FALHOU-<flow>.png`). Tudo vai para `.pipeline/review/`, listado na seção Prints de `.pipeline/e2e-test-results.md`, para você conferir antes de responder ao commit. No fim do run a pasta é arquivada em `.pipeline/history/<run>/review/` e nunca entra em commit.
 
 ## Arquivos do run
 
 | Arquivo em `.pipeline/` | Quem escreve | O que tem |
 |---|---|---|
 | `request.md` | orquestrador | o seu pedido, literal |
-| `spec.md` | Planner | o contrato: critérios, segurança, decisões, Fix Plans |
-| `changes.md` | Coder e Simplifier | o que mudou, checks estáticos, o que foi simplificado |
-| `test-results.md` | Tester | status, red check, checks estáticos, cobertura, resultados |
+| `triage.md` | orquestrador | as seis respostas da triagem |
+| `spec.md` | orquestrador (o pedido) ou Planner | o contrato e as decisões |
+| `build.md` | Builder | critério por teste, red check, checks, arquivos, mapa do app |
 | `e2e-test-results.md` | E2E Tester | modo, cobertura, prints, resultados |
-| `review.md` | orquestrador, com o texto do Reviewer | veredito e achados |
+| `verify.md` | Verifier | veredito, ataques, achados, o que corrigir |
 | `commits.md` | Committer | commits feitos, o que ficou de fora, recomendação de PR |
+| `usage.csv` | orquestrador | tokens e tempo de cada etapa |
 | `history/` | orquestrador | um diretório por run e o `LOG.md` com o veredito de cada um |
+
+## De oito agentes para dois
+
+A primeira versão tinha oito estágios: Planner, Coder, Simplifier, Tester, Breaker, E2E, Reviewer e Committer. Ela foi medida no flash-sales (F01, estoque com reserva atômica) contra um agente direto. O oráculo empatou, mas a versão antiga usou 16 chamadas de agente, 951k tokens e 36 minutos, contra 155k tokens e 4 minutos do agente direto. O que se viu:
+
+- **Breaker:** foi o único estágio que achou um defeito real, um byte NUL que virava 500, e o agente direto tinha entregado esse defeito.
+- **Simplifier:** rodou três vezes e não mudou nada.
+- **E2E:** repetiu os testes do Tester.
+- **Ciclo de correção:** uma volta inteira serviu só para consertar a instabilidade que os testes do próprio pipeline criaram.
+- **Spec do Planner:** 240 linhas, relidas por doze agentes.
+
+As mudanças seguiram essas medições e o que a indústria e a pesquisa recomendam:
+- **Planejar só pedido ambíguo.** [Anthropic, *Building effective agents*](https://www.anthropic.com/engineering/building-effective-agents) recomenda começar pelo mais simples, e o Codex e o Cursor só planejam tarefa complexa ou ambígua. Daí a triagem.
+- **Testes e código num contexto só.** Separar em agentes diferentes só recarrega contexto, sem melhorar o resultado. Daí o Builder.
+- **Verificação independente.** Testes escritos por outro agente acertam muito mais ([AgentCoder](https://arxiv.org/abs/2312.13010): 87,8% contra 61%), e um avaliador separado e cético funciona melhor que a autoavaliação ([Anthropic, 2026](https://www.anthropic.com/engineering/harness-design-long-running-apps)). Daí o Verifier.
+- **Poucas tentativas de correção.** Os modelos perdem de 60% a 80% da capacidade de depurar em duas ou três tentativas ([DDI](https://arxiv.org/abs/2506.18403)). Daí o limite de duas voltas, com contexto novo na segunda.
+
+O resultado foi a tabela do topo: sem o retrabalho do agente direto e com os mesmos tokens que ele. Os dados brutos, o protocolo e as ressalvas estão em `docs/experiment/` no flash-sales.
 
 ## Comandos úteis
 
 ```bash
 cat .pipeline/history/LOG.md                         # histórico de todos os runs, com o veredito
+column -ts, .pipeline/history/*/usage.csv            # tokens e tempo por etapa de cada run
 git config --global --unset pipeline.commitAuthor    # trocar o nome salvo da conta compartilhada
 npx maestro-runner@1.1.28 devices                    # o iPhone está visível para o teste?
 open .pipeline/review                                # abrir os prints do E2E mobile no Finder
 maestro test .maestro/                               # rodar os flows do app no simulador, fora do pipeline
 ```
-
-*Antonio Carlos Cavalcante, [github.com/Carloscavalcante97](https://github.com/Carloscavalcante97)*

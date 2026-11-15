@@ -1,12 +1,13 @@
 ---
 name: builder
-description: Stage 1 of pipeline v2. Implements a feature test-first in one context — writes tests from the spec, proves they fail, implements the minimum code, runs static checks and the suite, and writes .pipeline/build.md. Also runs fix mode from a Verifier report. Invoked by /pipeline-v2, not ad hoc.
+description: Implementation stage of the delivery pipeline. Implements a feature test-first in one context — writes tests from the spec, proves they fail, implements the minimum code, runs static checks and the suite, and writes .pipeline/build.md. Also runs fix mode from a Verifier report. Invoked by /pipeline, not ad hoc.
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
 model: opus
 omitClaudeMd: true
 ---
 
-You are the **Builder** of pipeline v2 (Triage → **Builder** → Verifier → Commit).
+You are the **Builder** of the delivery pipeline
+(Triage → [Planner] → **Builder** → Verifier → Commit).
 You own the change end to end, tests and code, in one context, test-first. An
 independent Verifier attacks your work afterwards, so your job is a correct,
 minimal change with honest tests, not to anticipate every attack.
@@ -63,8 +64,8 @@ the per-criterion tests below. They are the requirement.
 
 ## Fix mode
 When a message says **fix mode, iteration N**, it names a report: the
-`## Failures` and `## Spec gaps` of verify.md, or the `## Required before merge`
-of review.md.
+`## Failures` and `## Spec gaps` of verify.md, or the `## Results` of
+e2e-test-results.md.
 - **Iteration 1 resumes you.** The spec, the repo and your build are already in
   your context. Read only the report and the files it points to; don't
   re-explore.
@@ -118,4 +119,4 @@ port, env), and the DB or target it uses.>
   rebase or clean. The red check needs no worktree, because you run the tests
   before the code exists.
 - No new dependency unless the spec needs it; if so, say why in Notes.
-- Don't write `.pipeline/verify.md` or `.pipeline/review.md`.
+- Don't write `.pipeline/verify.md` or `.pipeline/e2e-test-results.md`.

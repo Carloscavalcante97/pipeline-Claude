@@ -23,8 +23,8 @@ style (no em dash, no arrows, no colon in the middle of a sentence).
   security, Out of scope.
 - `.pipeline/commits.md`: branch, base, commits, proposed title. Status must
   be `committed`.
-- `.pipeline/test-results.md`, `.pipeline/e2e-test-results.md`,
-  `.pipeline/review.md` (must be SHIP).
+- `.pipeline/build.md` (criteria, checks), `.pipeline/e2e-test-results.md`
+  when E2E ran, and `.pipeline/verify.md` (verdict must be SHIP).
 - `.github/pull_request_template.md` in the repo, when it exists.
 - The code: `git diff <base>...HEAD`, seed files, routes, labels and messages.
 

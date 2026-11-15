@@ -1,5 +1,5 @@
 #!/bin/bash
-# PreToolUse(Bash) hook for the pipeline's read-only stages (Planner, Reviewer).
+# PreToolUse(Bash) hook for the pipeline's read-only stage (Planner).
 # Installed at ~/.claude/hooks/pipeline/readonly-bash.sh.
 #
 # Allows read-only commands only: no redirection to a file, no in-place
