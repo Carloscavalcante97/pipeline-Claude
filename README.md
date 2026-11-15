@@ -13,7 +13,7 @@ Um comando do Claude Code, `/pipeline "<feature>"`, que transforma uma descriç�
    [perguntas]    [gate]                       [gate]      [gate]     SHIP / BLOCK    [s/n]
 ```
 
-Em uso diário em sistemas NestJS/PostgreSQL, Next.js e .NET em produção, o tempo gasto em correção caiu cerca de 75% em comparação com um agente de IA solto.
+Em uso diário em sistemas NestJS/PostgreSQL, Next.js e .NET em produção, a percepção é de cerca de 75% menos tempo gasto em correção do que com um agente de IA solto. Isso é observação de uso, não medição. A medição controlada está no experimento A/B do flash-sales, com duas features por enquanto. Nele, a correção depois da entrega caiu de 18–27 linhas para zero, porque a pipeline pegou antes da entrega defeitos que o agente direto deixou passar. Em compensação, o tempo total até o aceite foi maior: cerca de 2 vezes na v2 e 9 vezes na v1.
 
 Existe também a `/pipeline-v2`, uma versão enxuta com dois agentes no caminho principal, montada a partir de medições. Ela está descrita em [Pipeline v2](#pipeline-v2-pipeline-v2).
 
