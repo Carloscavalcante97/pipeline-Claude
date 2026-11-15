@@ -13,7 +13,16 @@ Um comando do Claude Code, `/pipeline "<feature>"`, que transforma uma descriç�
    [perguntas]    [gate]                       [gate]      [gate]     SHIP / BLOCK    [s/n]
 ```
 
-Em uso diário em sistemas NestJS/PostgreSQL, Next.js e .NET em produção, a percepção é de cerca de 75% menos tempo gasto em correção do que com um agente de IA solto. Isso é observação de uso, não medição. A medição controlada está no experimento A/B do flash-sales, com duas features por enquanto. Nele, a correção depois da entrega caiu de 18–27 linhas para zero, porque a pipeline pegou antes da entrega defeitos que o agente direto deixou passar. Em compensação, o tempo total até o aceite foi maior: cerca de 2 vezes na v2 e 9 vezes na v1.
+Medido num A/B controlado no flash-sales. A mesma feature (F02, Idempotency-Key) foi feita duas vezes a partir do mesmo commit, uma pela `/pipeline-v2` e outra por um agente direto, com o mesmo oráculo oculto e uma revisão cega:
+
+| | agente direto | `/pipeline-v2` | diferença |
+|---|---:|---:|---:|
+| defeitos alto/médio na entrega | 1 | 0 | −100% |
+| retrabalho depois da entrega | 27 linhas, 1 rodada | 0 | −100% |
+| tokens até o aceite | 201k | 204k | +1% |
+| tempo até o aceite | 9,5 min | 17,9 min | +88% |
+
+É uma feature só, então os percentuais valem com os números absolutos ao lado. A v2 custa praticamente os mesmos tokens que o agente direto, entrega sem o retrabalho e gasta quase o dobro do tempo. Na comparação com a v1 (F01, outra feature, então só como indicação), a v2 usou 79% menos tokens e 50% menos tempo.
 
 Existe também a `/pipeline-v2`, uma versão enxuta com dois agentes no caminho principal, montada a partir de medições. Ela está descrita em [Pipeline v2](#pipeline-v2-pipeline-v2).
 
