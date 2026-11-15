@@ -15,6 +15,8 @@ Um comando do Claude Code, `/pipeline "<feature>"`, que transforma uma descriç�
 
 Em uso diário em sistemas NestJS/PostgreSQL, Next.js e .NET em produção, o tempo gasto em correção caiu cerca de 75% em comparação com um agente de IA solto.
 
+Existe também a `/pipeline-v2`, uma versão enxuta com dois agentes no caminho principal, montada a partir de medições. Ela está descrita em [Pipeline v2](#pipeline-v2-pipeline-v2).
+
 ## Por que existe
 
 Um agente de IA sem processo produz código que parece pronto. O custo aparece depois, em correções, retrabalho e PRs que voltam. A causa quase sempre é uma destas duas: a entrada era ambígua, ou ninguém verificou a saída de forma independente.
@@ -61,6 +63,70 @@ Quando um teste falha ou o review não dá SHIP, o Planner diagnostica a causa r
 
 O orquestrador compara o hash dos arquivos alterados antes e depois de cada estágio. O Simplifier não pode ter mudado teste, os testers só podem ter mudado teste, e o Reviewer não pode ter mudado nada. Os hooks no frontmatter dos agentes bloqueiam a ação na hora; o diff pega o que passar. Uma violação para o run.
 
+## Pipeline v2: `/pipeline-v2`
+
+A v2 nasceu de um experimento A/B no projeto flash-sales. Cada feature foi feita duas vezes a partir do mesmo commit, uma pela pipeline e outra por um agente direto. As duas versões foram julgadas pelo mesmo oráculo oculto e por uma revisão cega. O resultado: o que fez diferença na qualidade foi a verificação independente, e o resto da v1 era custo. Na primeira feature, a v1 usou 16 chamadas de agente e 951k tokens, contra 155k do agente direto.
+
+```
+/pipeline-v2 "<feature com o contrato>"
+
+  Triagem → [Planner?] → Builder → Verifier → [fix ≤ 2] → Committer
+  (sem agente)            TDD num    ataca e julga,          (Haiku)
+                          contexto   contexto limpo
+```
+
+- **Triagem.** O próprio orquestrador responde 6 perguntas sobre o pedido, sem
+  chamar agente: a interface está explícita, as regras são testáveis, o escopo
+  é delimitado, não há decisão em aberto, a mudança é reversível e local, e o
+  tamanho fica em até ~500 linhas. Se todas forem "sim", o pedido vira o spec e
+  o Planner não roda.
+- **Builder.** Substitui o Coder, o Simplifier e o Tester num contexto só.
+  Escreve os testes a partir do spec antes do código, então o red check sai de
+  graça. Depois faz a implementação mínima, roda typecheck, lint, suíte e build,
+  e roda os testes novos 3 vezes para pegar instabilidade.
+- **Verifier.** Substitui o Breaker, o E2E de backend e o Reviewer. Roda em
+  contexto limpo, faz até 3 ataques contra a API rodando (entrada hostil,
+  concorrência, dependência falhando), revisa o diff contra o spec e dá o
+  veredito. Só pode criar arquivos `*.breaker.*`.
+- **Etapas condicionais.** O Planner roda só se a triagem falhar. O Simplifier,
+  só com mais de 300 linhas de produção. O E2E, só em UI ou mobile. O Reviewer
+  completo, só em runs grandes. Todos são os agentes da v1, reaproveitados.
+- **Ciclo de correção.**
+  - É automático para bug e passa por você em lacuna de spec, mudança de
+    contrato ou BLOCK.
+  - O fix 1 retoma o mesmo Builder, que já tem o spec e o repo no contexto. O
+    fix 2 abre um Builder novo.
+  - O máximo são duas voltas.
+- **Custo medido.** O `.pipeline/usage.csv` registra tokens e tempo por etapa,
+  e o run para e pergunta quando passa de 450k tokens.
+
+### Medido no flash-sales
+
+| feature | quem fez | defeitos alto/médio na entrega | tokens até o aceite | tempo |
+|---|---|---:|---:|---:|
+| F01, estoque com reserva atômica | agente direto | 1 | 155k | 4 min |
+| F01 | `/pipeline` (v1) | 0 | 951k | 36 min |
+| F02, Idempotency-Key | agente direto | 1 | 201k | 10 min |
+| F02 | `/pipeline-v2` | 0 | 204k | 18 min |
+
+- O oráculo empatou em 100% nas duas features.
+- A diferença veio de entradas hostis que só o verificador independente atacou:
+  um byte NUL que virava 500 e um surrogate Unicode que fazia a repetição
+  idêntica receber 422.
+- A v2 gastou praticamente os mesmos tokens que o agente direto, mas levou cerca
+  de 2 vezes mais tempo.
+- A amostra ainda é pequena (2 features). Os dados e as ressalvas estão em
+  `docs/experiment/` no flash-sales.
+
+### Quando usar cada uma
+
+- **`/pipeline-v2`:** o padrão, principalmente em features com invariante
+  difícil: concorrência, dinheiro, idempotência, mensageria, segurança.
+- **`/pipeline` (v1):** quando você quer o Planner e todos os estágios em todo
+  run, e o gate humano em toda correção.
+- **Sem pipeline:** mudanças triviais, como CRUD simples ou ajuste de texto e
+  layout.
+
 ## Instalação
 
 ```bash
@@ -71,12 +137,13 @@ cd pipeline-Claude
 mkdir -p ~/.claude/hooks/pipeline && cp hooks/*.sh ~/.claude/hooks/pipeline/
 
 # global, vale para todos os projetos da máquina
-cp pipeline.md ~/.claude/commands/
+# (a v2 reaproveita os agentes da v1, então os dois comandos vão juntos)
+cp pipeline.md pipeline-v2.md ~/.claude/commands/
 cp agents/*.md ~/.claude/agents/
 
 # ou só num projeto, versionado junto com o código dele
 mkdir -p ../meu-projeto/.claude/commands ../meu-projeto/.claude/agents
-cp pipeline.md ../meu-projeto/.claude/commands/
+cp pipeline.md pipeline-v2.md ../meu-projeto/.claude/commands/
 cp agents/*.md ../meu-projeto/.claude/agents/
 ```
 
