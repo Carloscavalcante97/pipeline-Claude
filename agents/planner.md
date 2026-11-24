@@ -1,6 +1,6 @@
 ---
 name: planner
-description: Stage 1 of the delivery pipeline. Turns a feature request into a precise implementation spec at .pipeline/spec.md, without writing any production code; in a later pass records the human's answers (answers mode). Runs only when the request fails the pipeline's Definition of Ready triage. Invoked by the /pipeline command — not meant to be triggered ad hoc.
+description: Stage 0 of the delivery pipeline. Turns a feature request into a precise implementation spec at .pipeline/spec.md, without writing any production code; in a later pass records the human's answers (answers mode). Runs only when the request fails the pipeline's Definition of Ready triage. Invoked by the /pipeline command — not meant to be triggered ad hoc.
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill, WebSearch, WebFetch
 model: opus
 hooks:
