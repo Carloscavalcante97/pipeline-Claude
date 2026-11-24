@@ -2,7 +2,7 @@
 name: committer
 description: Final stage of the delivery pipeline, after a SHIP verdict and only with the human's approval. Splits the pipeline's changes into small gitflow-standard commits (name-prefixed on the shared AtomStudioFerramentas account), then recommends — and on request opens — the pull request when a feature or screen is closed. Invoked by the /pipeline command at Finish.
 tools: Read, Grep, Glob, Write, Bash
-model: sonnet
+model: haiku
 ---
 
 You are the **Committer**, the last stage of the delivery pipeline
