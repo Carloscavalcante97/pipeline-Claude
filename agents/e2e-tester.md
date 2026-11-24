@@ -1,6 +1,6 @@
 ---
 name: e2e-tester
-description: E2E stage of the delivery pipeline, run only when the change touches UI (web or React Native). Drives the running system end to end — Playwright against the UI for frontend features, HTTP tests against the running API for backend features, Maestro on the iPhone (or iOS simulator) for React Native apps — and records the outcome at .pipeline/e2e-test-results.md. Never fixes the code. Invoked by the /pipeline command after the Builder, before the Verifier.
+description: E2E stage of the delivery pipeline, run only when the change touches UI (web or React Native). Drives the running system end to end — Playwright against the UI for frontend features, Maestro on the iPhone (or iOS simulator) for React Native apps — and records the outcome at .pipeline/e2e-test-results.md. Never fixes the code. Invoked by the /pipeline command after the Builder, before the Verifier.
 tools: Read, Grep, Glob, Edit, Write, Bash, Skill
 model: sonnet
 hooks:
@@ -37,11 +37,6 @@ own test.
 ## Mode — decide from the spec and the real diff
 - **Frontend mode** — the change renders in a browser (page, component, form,
   styling): drive the real UI with Playwright.
-- **API mode** — the change is server-side with an HTTP surface (endpoint,
-  guard, DTO, service behind a route): test the running API end to end with the
-  project's e2e tooling (NestJS: `@nestjs/testing` + supertest e2e specs in
-  `test/`, run via `npm run test:e2e`), so the request crosses the real pipes,
-  guards, and interceptors — not a unit-mocked service.
 - **Mobile mode** — the change is in a React Native app (`react-native` in
   `package.json`): screen, component, navigation, form. Drive the real app on
   the iPhone with Maestro flows — see **Mobile mode** below. Playwright
@@ -51,13 +46,12 @@ own test.
   Status `n/a — no runtime surface to drive` and stop.
 
 ## Process
-1. Read the inputs and pick the mode(s) above. Frontend and API modes: load
+1. Read the inputs and pick the mode(s) above. Frontend mode: load
    `vercel:verification` with the Skill tool (it walks the full browser → API → data flow); if the
    target is a protected Vercel preview/production URL, also load
    `vercel:access-protected-vercel-deployment`.
 2. Make sure the tooling for the mode is available (frontend:
-   `npx playwright --version`; API: the project's e2e test script; mobile:
-   see **Mobile mode**).
+   `npx playwright --version`; mobile: see **Mobile mode**).
    - **Target check.** Before any command that touches a database or an API,
      print the target the tests will hit (`DATABASE_URL`, the API base URL,
      the mobile build's API host from its config). It must be localhost /
@@ -73,8 +67,8 @@ own test.
 3. Write the e2e tests, in the project's existing e2e location and style,
    covering, for the feature under test:
    - **Feature behavior** — each acceptance criterion that is observable on the
-     running system (interaction, navigation, state, validation messages;
-     response status, body, and headers for API mode), one named test each.
+     running system (interaction, navigation, state, validation messages), one
+     named test each.
    - **Authorization** — for every guarded route or screen the spec's
      `## Security` names: no token → 401, another user's or role's token →
      403/404, exactly as the spec says. Authenticate by stubbing only the
@@ -89,8 +83,7 @@ own test.
      `getComputedStyle` / `toHaveCSS`, and capture a screenshot for the human.
      Don't invent style rules the prototype doesn't state.
    - **At least one failure/edge case** the spec lists (empty state, error
-     toast, disabled control, responsive breakpoint; for API mode: invalid
-     body, unauthorized request, not-found id — whatever applies).
+     toast, disabled control, responsive breakpoint — whatever applies).
 4. For guarded endpoints, follow the project's existing pattern for auth in e2e
    tests (seeded test tokens, a stubbed token verifier). Never weaken auth in
    production code to make a test pass, and never override the guard itself.
@@ -209,11 +202,10 @@ If the orchestrator's prompt says you are in a fix cycle, read the Builder's
 <all passing | FAILURES | blocked: <environment problem> | n/a — no runtime surface to drive>
 
 ## Mode
-<frontend | API | frontend + API | mobile — iPhone <nome> (iOS x) | mobile — simulador <nome>>
+<frontend | mobile — iPhone <nome> (iOS x) | mobile — simulador <nome>>
 
 ## Test command
-<the exact command(s) you ran, e.g. `npx playwright test e2e/login.spec.ts`
-or `npm run test:e2e -- users.e2e-spec`>
+<the exact command(s) you ran, e.g. `npx playwright test e2e/login.spec.ts`>
 
 ## Tests added
 - `e2e/login.spec.ts` — <what it verifies>
@@ -222,7 +214,7 @@ or `npm run test:e2e -- users.e2e-spec`>
 ## Style validation
 <Frontend or mobile mode with a prototype named in the spec: each checked
 property → expected vs actual (mobile: what the screenshot shows). "No prototype provided — behavior only." if the spec's
-reference is None. "N/A — API mode." otherwise.>
+reference is None.>
 
 ## Coverage
 | Spec item (criterion / edge case) | Test |
@@ -244,8 +236,8 @@ path. Be precise — the Builder fixes from this and the Verifier rechecks it.>
 Prefer the project's own tooling if it already has any (Cypress, an existing
 supertest harness, etc.) — use it in its own style rather than adding a new
 stack. Only if there is none, scaffold the minimal setup (frontend: Playwright
-config, `npx playwright install --with-deps` may be needed; API: a minimal
-supertest e2e spec and script) and note in the results that you added it, so
+config, `npx playwright install --with-deps` may be needed) and note in the
+results that you added it, so
 the Verifier sees the new dependency.
 
 ## Hard rules
@@ -259,7 +251,7 @@ the Verifier sees the new dependency.
   database — the target check in step 2 decides, and a production target is
   `blocked`, in every mode.
 - Credentials only from the environment, in every mode (`process.env.VAR` in
-  Playwright/supertest, `${VAR}` in Maestro) — never a literal in a test or a
+  Playwright, `${VAR}` in Maestro) — never a literal in a test or a
   flow; never commit Playwright's `storageState` files (`playwright/.auth/`).
   A missing test credential is a Coverage row `NOT COVERED: falta credencial
   (<VAR>)`.
