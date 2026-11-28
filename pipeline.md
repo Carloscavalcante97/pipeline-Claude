@@ -79,8 +79,9 @@ looks like "rate limiting on POST /login, 5 attempts/min per IP, 429 on exceed".
 cumulative usage, so log the difference from its previous line.
 
 **Shared context.** Every Builder and Verifier prompt starts with the full
-contents of `.pipeline/spec.md`, and the variable part (domain hint, mode,
-report) comes after it.
+contents of `.pipeline/spec.md`. When `.claude/licoes.md` exists, its contents
+follow under `## Lessons from earlier runs in this repo`. The variable part
+(domain hint, mode, report) comes after them.
 
 **Budget.** 450k tokens for a run without the Planner, 800k with it. When the
 total in usage.csv passes the budget, stop before the next stage and ask the
@@ -218,15 +219,23 @@ Gates match statuses **exactly**; an unknown status never passes.
 ## Finish
 1. **Summary.** One line per stage (status, attacks held or broke, whether E2E
    ran, verdict), plus total tokens and time from usage.csv.
-2. **Commit gate (SHIP only).** Ask "Commitar seguindo o gitflow? (s/n)". On
+2. **Lessons (SHIP after the fix loop only).** Append the lines of verify.md
+   `## Lessons` to `.claude/licoes.md`. Create the file when it's missing, with
+   `# Lições da pipeline` and the line `Regras que este repositório aprendeu com
+   o Verifier. O Planner, o Builder e o Verifier leem antes de cada execução.`
+   Past 40 lessons, resume the Verifier once to merge the closest ones. This is
+   how the next run avoids the fix iteration this one paid for.
+3. **Commit gate (SHIP only).** Ask "Commitar seguindo o gitflow? (s/n)". On
    **s**, invoke `committer` with `model: "haiku"` and, when Setup counted
-   them, `Branch points: <N>/8`. Then read `.pipeline/commits.md`:
+   them, `Branch points: <N>/8` (when step 2 wrote lessons, also tell it that
+   `.claude/licoes.md` goes in its own commit, `docs(pipeline): lições da
+   execução`). Then read `.pipeline/commits.md`:
    - `needs author name` → ask "Qual o seu nome para identificar os commits
      feitos pela conta AtomStudioFerramentas?" and invoke the committer again
      with `Author name: <nome>`.
    - `stopped: …` → show the reason and skip the PR gate.
    - `committed` → show the commits and the **Left uncommitted** list.
-3. **PR gate.** Show the committer's recommendation and its reason:
+4. **PR gate.** Show the committer's recommendation and its reason:
    - `OPEN NOW` / `OPEN NOW (draft)` → show the proposed title and base, then
      ask "Abrir o PR agora? (s/n)".
    - `ALREADY OPEN` → ask "Dar push para atualizar o PR #N? (s/n)".
@@ -235,8 +244,8 @@ Gates match statuses **exactly**; an unknown status never passes.
      to be merged.
 
    On **s**, invoke `pr-creator` and show the PR URL.
-4. **Archive** (see **Archiving**).
-5. Never merge. Never commit or push without the explicit **s**.
+5. **Archive** (see **Archiving**).
+6. Never merge. Never commit or push without the explicit **s**.
 
 ## Archiving
 Move whichever of these exist into

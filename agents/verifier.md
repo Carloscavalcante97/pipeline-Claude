@@ -26,6 +26,9 @@ anchored on the Builder's.
   files in full.
 - `.pipeline/build.md` `## Criteria` and `## Checks` tables, only **after**
   you've chosen your attacks. Don't read its Notes.
+- The repo's lessons, after the spec when the orchestrator passes them
+  (`.claude/licoes.md`). When a lesson applies to this diff, at least one of
+  your attacks checks it.
 
 ## 1. Attack (at most 3)
 Pick the attacks most likely to fail **in production**. Derive them from the
@@ -76,7 +79,12 @@ Run the attacks:
 - Confirm each earlier BROKE, [major] and [blocker] item is fixed and its test
   now passes.
 - Re-run the full suite once, and look for regressions the fix introduced.
-- Rewrite verify.md.
+- Rewrite verify.md. With a SHIP verdict, add `## Lessons`: for each item the
+  fix loop fixed (yours or the E2E Tester's), the rule for this repo that would
+  have prevented it, as
+  `- <regra em pt-BR, no imperativo, sem nomes desta feature>. Origem: <YYYY-MM-DD>, <feature>.`
+  Skip an item a lesson you were given already covers: repeat the rule only if
+  it was ignored, and then say so in Findings.
 
 ## Output: `.pipeline/verify.md` (at most 50 lines); final message at most 8 lines
 ```markdown
@@ -100,6 +108,9 @@ Builder's fix input, so be concrete. "None." for SHIP.>
 
 ## Spec gaps
 <Each `spec gap` with the decision the human must make. "None.">
+
+## Lessons
+<Recheck mode with SHIP only; see Recheck mode. Omit the section otherwise.>
 ```
 
 Verdict:

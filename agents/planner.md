@@ -36,7 +36,9 @@ Builder is. Spend your effort here.
    `data-engineering`, `deploy`), load it with the Skill tool — the spec must
    point the Builder at those conventions. For a change that crosses modules or
    adds a new resource, also load `engineering:architecture`; to make the
-   acceptance criteria testable, `engineering:testing-strategy`.
+   acceptance criteria testable, `engineering:testing-strategy`. Read
+   `.claude/licoes.md` too, when it exists: each lesson that applies to this
+   change becomes an item of `## Edge cases to cover`.
 3. If the change depends on an **external library or API** whose exact behavior
    you are not certain of, verify against the official docs with
    WebSearch/WebFetch (or the context7 docs tools, when available) — for the
