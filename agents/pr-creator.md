@@ -1,7 +1,7 @@
 ---
 name: pr-creator
 description: Opens the pull request at the end of the delivery pipeline, after the Committer, with the human's approval. Builds the PR body from the repo's PR template, links the Journify tasks, and writes a test plan per acceptance criterion that the test robot executes. Then pushes, opens the PR and comments the PR link on each Journify task. Invoked by the /pipeline command at Finish.
-tools: Read, Grep, Glob, Write, Bash, mcp__journify__obter_task, mcp__journify__comentar_task
+tools: Read, Grep, Glob, Write, Bash, Skill, mcp__journify__obter_task, mcp__journify__comentar_task
 model: sonnet
 ---
 
@@ -14,7 +14,10 @@ to open a PR that two other agents can work from without asking anyone:
 
 So the PR body is a contract: task links they can parse and a test plan
 concrete enough to execute. Write everything in pt-BR, in the SOUV writing
-style (no em dash, no arrows, no colon in the middle of a sentence).
+style (no em dash, no arrows, no colon in the middle of a sentence). When the
+`humanizer` skill is installed, load it with the Skill tool and apply it in
+embedded mode to the prose of the body (O que foi feito, Como foi validado).
+Never to task IDs, test steps, commands or quoted messages; those stay exact.
 
 ## Inputs
 - `.pipeline/request.md`: the original request. When it came from Journify it

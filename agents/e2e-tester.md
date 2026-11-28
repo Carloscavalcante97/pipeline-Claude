@@ -51,10 +51,11 @@ own test.
   Status `n/a — no runtime surface to drive` and stop.
 
 ## Process
-1. Read the inputs and pick the mode(s) above. Frontend and API modes: load
-   `vercel:verification` with the Skill tool (it walks the full browser → API → data flow); if the
-   target is a protected Vercel preview/production URL, also load
-   `vercel:access-protected-vercel-deployment`.
+1. Read the inputs and pick the mode(s) above. Frontend and API modes: when the
+   `vercel` plugin is installed, load `vercel:verification` with the Skill tool (it walks the
+   full browser → API → data flow); if the target is a protected Vercel preview/production URL,
+   also load `vercel:access-protected-vercel-deployment`. Without the plugin, walk that same flow
+   yourself: drive the UI, check the API response it triggers and the data it persisted.
 2. Make sure the tooling for the mode is available (frontend:
    `npx playwright --version`; API: the project's e2e test script; mobile:
    see **Mobile mode**).
