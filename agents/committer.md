@@ -107,8 +107,13 @@ noise is as unreadable as one giant commit. Typical result: 2–6 commits.
 [<Nome>] <type>(<scope>): <descrição>
 
 <corpo opcional: 1–3 linhas com o porquê>
+
+Journify: <taskId>
 ```
 - `[<Nome>] ` only on the shared account; omit it otherwise.
+- `Journify: <taskId>`: one line per `Journify:` line of `.pipeline/request.md`,
+  always the last paragraph of every commit. The next run sums the branch's
+  points from these lines, so never drop them. No Journify task → no line.
 - `type` follows the branch for product code: `feature/*` → `feat`,
   `bugfix/*` and `hotfix/*` → `fix`, `release/*` → `chore(release)`. Within
   the feature, use `test`, `docs`, `build`, `refactor`, `style`, `perf`,
@@ -152,6 +157,12 @@ First check for an open PR: `gh pr view --json number,url,state` (ignore
 errors — no PR, no `gh`, or a non-GitHub remote). Open → **ALREADY OPEN**:
 a push updates it.
 
+Then the per-person limit: your open PRs in this repo are
+`gh pr list --author @me --state open --json number,title,url`; on the
+shared account keep only titles starting with `[<Nome>]` (step 2). 2 or more
+→ **LIMIT**, whatever the signals below: a person has at most 2 open PRs per
+project, so this branch waits for one of them to be merged.
+
 Otherwise, judge the **whole branch** (`git log <base>..HEAD`,
 `git diff --shortstat <base>...HEAD`), not only this run. Recommend
 **OPEN NOW** when any of these holds — and name which one:
@@ -168,6 +179,8 @@ Otherwise, judge the **whole branch** (`git log <base>..HEAD`,
    migrations' generated SQL). Review quality drops beyond that: open now
    as a **draft** if the feature isn't closed yet.
 4. **hotfix/** branch — always, it is urgent by definition.
+5. **Teto de pontos** — the prompt brings `Branch points: 8/8`: a PR carries
+   at most 8 points of tasks, so nothing else fits in this branch.
 
 None holds → **NOT YET**, with what is still missing (e.g. "endpoint pronto,
 falta a tela que consome").
@@ -196,7 +209,7 @@ falta a tela que consome").
 
 ## Pull request
 ### Recommendation
-<OPEN NOW | OPEN NOW (draft) | NOT YET | ALREADY OPEN (#N <url>)>
+<OPEN NOW | OPEN NOW (draft) | NOT YET | ALREADY OPEN (#N <url>) | LIMIT (#a, #b)>
 ### Reason
 <the signal from step 7, tied to files/results>
 ### Proposed PR
@@ -232,6 +245,8 @@ Autor: <Nome>   ← só na conta compartilhada
 2. `git push -u origin <branch>` — never `--force`. Push rejected (remote has
    new commits) → stop and report; never rebase or force on your own.
 3. **ALREADY OPEN** → the push already updated it; report the URL and stop.
+   **LIMIT**, or the step 7 count now gives 2 or more → don't create it;
+   report the open PRs and stop.
 4. Otherwise write the body to `.pipeline/pr-body.md` and run
    `gh pr create --base <base> --head <branch> --title "<title>" --body-file .pipeline/pr-body.md`
    (add `--draft` for OPEN NOW (draft)).
@@ -255,3 +270,5 @@ Autor: <Nome>   ← só na conta compartilhada
   `config --global pipeline.commitAuthor`.
 - Never stage `.pipeline/`, baseline files, secrets or build output.
 - Never merge a PR — merging is always the human's call.
+- Never open a third PR for the same person in the same repo: 2 open PRs per
+  person per project is the limit.

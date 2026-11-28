@@ -33,17 +33,26 @@ style (no em dash, no arrows, no colon in the middle of a sentence).
 ### 1. Preconditions
 Stop (write `## PR` `stopped: <reason>` at the end of `.pipeline/commits.md`
 and end your turn) if `commits.md` status isn't `committed`, the review isn't
-SHIP, or the branch is `main`, `master` or `develop`.
+SHIP, or the branch is `main`, `master` or `develop`. Also stop when this
+branch has no open PR yet and the person already has 2 or more in this repo:
+`gh pr list --author @me --state open --json number,title,url`, keeping only
+titles that start with the commits' `[Nome]` prefix when the commits have one
+(shared account). `stopped: limite de 2 PRs abertos por pessoa neste projeto (<urls>)`.
 
 ### 2. Tasks
-Collect the Journify task IDs from `request.md` (20-char IDs, or links that
-contain them). Read each with `mcp__journify__obter_task`. No task ID →
-say so in the PR ("Sem task vinculada") and keep going; the human decides.
+The PR covers every task of the branch, not only this run's. Collect the
+Journify task IDs from `request.md` (20-char IDs, or links that contain them)
+and from the commits' trailers,
+`git log <base>..HEAD --format='%(trailers:key=Journify,valueonly)' | sort -u`.
+Read each with `mcp__journify__obter_task` and sum their points
+(`estimate.value`). Over 8 → stop: `stopped: <N> pontos na branch, o teto do PR
+é 8`. No task ID → say so in the PR ("Sem task vinculada") and keep going; the
+human decides.
 
 ### 3. Test plan
 One block per acceptance criterion of the **task** (not of the spec: the
 robot judges the delivery against what was asked). Number them C1, C2... in
-the task's order. For each criterion, write the scenarios that apply:
+the task's order. Several tasks → one group per task, numbering going on. For each criterion, write the scenarios that apply:
 
 - **Caminho feliz**: the action works end to end and the result persists
   (reload the page and it is still there, the user is still logged in).
@@ -70,6 +79,7 @@ afetadas, Plano de testes. Rules:
 - **Tasks relacionadas**: one line per task:
   `- <título> · Journify \`<taskId>\` · <link>`.
   The backticked ID is what the agents parse. Keep it exactly like that.
+  After the list, one line: `Pontos: <N> de 8.`
 - **O que foi feito**: the spec Goal in one paragraph, then the commits.
 - **Regras de negócio afetadas**: the rule IDs created or changed under
   `.specs/` in this diff (`git diff --name-only <base>...HEAD -- .specs`).
