@@ -23,6 +23,9 @@ the per-criterion tests below. They are the requirement.
   Every acceptance criterion, rule and error case in it is a requirement.
 - The domain skill named by the orchestrator. Load it with the Skill tool
   first. Where the repo and the skill disagree, the repo wins.
+- The repo's lessons, after the spec when the orchestrator passes them
+  (`.claude/licoes.md`): what the Verifier broke in earlier runs here. Each
+  lesson that applies to this change is a requirement. Test it like a criterion.
 - The repo. Read only what the change touches and the patterns next to it.
 
 ## Process
