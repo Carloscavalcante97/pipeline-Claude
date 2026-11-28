@@ -35,9 +35,34 @@ looks like "rate limiting on POST /login, 5 attempts/min per IP, 429 on exceed".
    `^(feature|bugfix|hotfix|release)/[a-z0-9._-]+$`. On `main`, `master` or
    `develop`, or any other name, tell the user the gitflow name to use (e.g.
    `git switch -c feature/<slug>`) and stop.
-2. **Leftovers.** If any handoff file is left in `.pipeline/`, archive it as
+2. **PR limits.** A PR carries at most **8 points** of Journify tasks, and a
+   person has at most **2 open PRs in each project** (the repo). Base: `develop` if it
+   exists, else `main`/`master` (`hotfix/*` and `release/*` use `main`/`master`).
+   - **Task points** (Journify input only): the task's `estimate.value`. No
+     estimate → ask the human how many points it is (don't write it to
+     Journify). A task over 8 → stop: "A task tem N pontos e não cabe num PR
+     (teto de 8). Divida no Journify e rode cada parte."
+   - **Branch points**: the tasks already in the branch are the `Journify:`
+     trailers the Committer writes,
+     `git log <base>..HEAD --format='%(trailers:key=Journify,valueonly)' | sort -u`.
+     Read each one not in this run with `mcp__journify__obter_task` and add
+     its points to this run's. Total over 8 → stop, listing the tasks and their
+     points: "A branch já tem N de 8 pontos. Abra o PR dela e comece esta task
+     numa branch nova a partir da <base>." Keep the total as **branch points**
+     for the Committer.
+   - **Open PRs**: yours in this repo are
+     `gh pr list --author @me --state open --json number,title,url`. On the
+     shared account (`git config user.name`/`user.email` match
+     `atom.?studio.?ferramentas`), keep only titles starting with
+     `[<git config --global pipeline.commitAuthor>]`; no name saved yet →
+     say the count isn't per person and go on. This branch has no open PR
+     (`gh pr view` fails) and you already have 2 or more → ask "Você já tem 2
+     PRs abertos neste projeto (<urls>). Esta branch só vira PR depois que um
+     deles for aprovado. Continuar? (s/n)". On **n**, stop. `gh` fails → say it in one
+     line and go on.
+3. **Leftovers.** If any handoff file is left in `.pipeline/`, archive it as
    `aborted` (see **Archiving**).
-3. **Run files.**
+4. **Run files.**
    - `mkdir -p .pipeline`.
    - `git status --porcelain -uall > .pipeline/baseline.txt`. If it isn't
      empty, show it and ask "A árvore tem alterações não commitadas (acima).
@@ -45,7 +70,7 @@ looks like "rate limiting on POST /login, 5 attempts/min per IP, 429 on exceed".
      stop.
    - Write the request verbatim to `.pipeline/request.md`.
    - `echo stage,tokens,tool_uses,ms > .pipeline/usage.csv`.
-4. **Domain skill hint** (`backend-nest`, `frontend-next`, …, or none). It goes
+5. **Domain skill hint** (`backend-nest`, `frontend-next`, …, or none). It goes
    to the Builder and the Planner.
 
 **Usage log.** After every subagent returns, append one line to
@@ -194,8 +219,8 @@ Gates match statuses **exactly**; an unknown status never passes.
 1. **Summary.** One line per stage (status, attacks held or broke, whether E2E
    ran, verdict), plus total tokens and time from usage.csv.
 2. **Commit gate (SHIP only).** Ask "Commitar seguindo o gitflow? (s/n)". On
-   **s**, invoke `committer` with `model: "haiku"`, then read
-   `.pipeline/commits.md`:
+   **s**, invoke `committer` with `model: "haiku"` and, when Setup counted
+   them, `Branch points: <N>/8`. Then read `.pipeline/commits.md`:
    - `needs author name` → ask "Qual o seu nome para identificar os commits
      feitos pela conta AtomStudioFerramentas?" and invoke the committer again
      with `Author name: <nome>`.
@@ -206,6 +231,8 @@ Gates match statuses **exactly**; an unknown status never passes.
      ask "Abrir o PR agora? (s/n)".
    - `ALREADY OPEN` → ask "Dar push para atualizar o PR #N? (s/n)".
    - `NOT YET` → tell the user what's still missing.
+   - `LIMIT` → show the user their open PRs; this branch waits for one of them
+     to be merged.
 
    On **s**, invoke `pr-creator` and show the PR URL.
 4. **Archive** (see **Archiving**).
