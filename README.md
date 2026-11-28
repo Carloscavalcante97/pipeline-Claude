@@ -86,11 +86,17 @@ Só roda depois de um SHIP e de você responder "s", em Haiku, porque o trabalho
 - divide o trabalho em commits pequenos por camada, no padrão Conventional Commits;
 - na conta compartilhada AtomStudioFerramentas, prefixa cada commit com `[Nome]`;
 - procura segredos antes de cada commit e nunca commita o que já estava alterado antes do run;
+- termina cada commit com `Journify: <id da task>`, que é como a pipeline sabe quais tasks já estão na branch;
 - avalia se é hora de abrir o PR.
 
 ### PR Creator
 
-Com outro "s", dá push e abre o PR com os links das tasks do Journify e um plano de testes por critério, que o robô de testes executa.
+Com outro "s", dá push e abre o PR com os links de todas as tasks do Journify da branch, a soma dos pontos e um plano de testes por critério, que o robô de testes executa.
+
+### Limites de PR
+
+- **Até 8 pontos por PR.** No Setup, a pipeline soma os pontos das tasks que já estão na branch com os da task nova. Se passar de 8, ela para e pede uma branch nova. Uma task sozinha acima de 8 precisa ser dividida no Journify antes.
+- **Até 2 PRs abertos por pessoa em cada projeto.** Com 2 abertos naquele repo, a branch nova pode ser trabalhada, mas só vira PR depois que um deles for aprovado. Na conta compartilhada AtomStudioFerramentas, a pessoa é o `[Nome]` no título do PR.
 
 ### Ciclo de correção
 
@@ -221,6 +227,7 @@ Campo novo com migration:
 
 | Etapa | Pergunta | Quando |
 |---|---|---|
+| Setup | "Você já tem 2 PRs abertos neste projeto. Continuar? (s/n)" | você tem 2 PRs abertos no repo e esta branch ainda está sem PR |
 | Setup | "A árvore tem alterações não commitadas. Continuar assim? (s/n)" | há trabalho seu não commitado |
 | Triagem | "O pedido parece passar de ~500 linhas. Dividir em pedidos menores? (s/n)" | pedido grande |
 | Planner | as perguntas em aberto do spec | a descrição deixou uma decisão em aberto |
@@ -230,7 +237,7 @@ Campo novo com migration:
 | Orçamento | "Passou do orçamento de tokens. Continuar? (s/n)" | mais de 450k tokens (800k com Planner) |
 | Committer | "Commitar seguindo o gitflow? (s/n)" | só depois de SHIP |
 | Committer | "Qual o seu nome para identificar os commits feitos pela conta AtomStudioFerramentas?" | conta compartilhada, só no primeiro commit da máquina |
-| PR | "Abrir o PR agora? (s/n)" | a feature ou a tela está fechada |
+| PR | "Abrir o PR agora? (s/n)" | a feature ou a tela está fechada, ou a branch chegou a 8 pontos (e você tem menos de 2 PRs abertos no repo) |
 
 ### Um run completo, resumido
 
